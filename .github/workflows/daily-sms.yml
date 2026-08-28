@@ -11,50 +11,48 @@ jobs:
 
     env:
       SMTP_HOST: smtp.gmail.com
-      SMTP_PORT: 587
+      SMTP_PORT: '587'
       SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       RECIPIENT_PHONE_NUMBER: ${{ secrets.RECIPIENT_PHONE_NUMBER }}
-      MESSAGE_BODY: ${{ vars.DAILY_SMS_MESSAGE || 'Good morning! This is your daily reminder from DailySchoolLunch.' }}
+      MESSAGE_BODY: ${{ vars.DAILY_SMS_MESSAGE != '' && vars.DAILY_SMS_MESSAGE || 'Good morning! This is your daily reminder from DailySchoolLunch.' }}
 
     steps:
       - name: Validate email-to-SMS configuration
+        shell: bash
         run: |
-          if [ -z "$SMTP_USERNAME" ] || [ -z "$SMTP_PASSWORD" ] || [ -z "$SMTP_FROM" ] || [ -z "$RECIPIENT_PHONE_NUMBER" ]; then
+          if [ -z "${SMTP_USERNAME}" ] || [ -z "${SMTP_PASSWORD}" ] || [ -z "${SMTP_FROM}" ] || [ -z "${RECIPIENT_PHONE_NUMBER}" ]; then
             echo "Missing one or more required secrets: SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM, RECIPIENT_PHONE_NUMBER"
             exit 1
           fi
 
       - name: Send SMS via Verizon email gateway
+        shell: bash
         run: |
-          # Verizon SMS address format: 10-digit-number@vtext.com
-          RECIPIENT_EMAIL="${RECIPIENT_PHONE_NUMBER}@vtext.com"
-
           python3 - <<'PY'
-import os
-import smtplib
-from email.message import EmailMessage
+          import os
+          import smtplib
+          from email.message import EmailMessage
 
-smtp_host = os.environ['SMTP_HOST']
-smtp_port = int(os.environ['SMTP_PORT'])
-username = os.environ['SMTP_USERNAME']
-password = os.environ['SMTP_PASSWORD']
-from_addr = os.environ['SMTP_FROM']
-recipient = os.environ['RECIPIENT_PHONE_NUMBER'] + '@vtext.com'
-subject = 'Daily School Lunch'
-body = os.environ['MESSAGE_BODY']
+          smtp_host = os.environ["SMTP_HOST"]
+          smtp_port = int(os.environ["SMTP_PORT"])
+          username = os.environ["SMTP_USERNAME"]
+          password = os.environ["SMTP_PASSWORD"]
+          from_addr = os.environ["SMTP_FROM"]
+          recipient = os.environ["RECIPIENT_PHONE_NUMBER"] + "@vtext.com"
+          body = os.environ.get("MESSAGE_BODY", "Good morning! This is your daily reminder from DailySchoolLunch.")
 
-msg = EmailMessage()
-msg['Subject'] = subject
-msg['From'] = from_addr
-msg['To'] = recipient
-msg.set_content(body)
+          msg = EmailMessage()
+          msg["Subject"] = "Daily School Lunch"
+          msg["From"] = from_addr
+          msg["To"] = recipient
+          msg.set_content(body)
 
-with smtplib.SMTP(smtp_host, smtp_port) as server:
-    server.starttls()
-    server.login(username, password)
-    server.send_message(msg)
+          with smtplib.SMTP(smtp_host, smtp_port) as server:
+              server.starttls()
+              server.login(username, password)
+              server.send_message(msg)
 
-print(f"SMS email sent to {recipient}")
-PY
+          print(f"SMS email sent to {recipient}")
+          PY
