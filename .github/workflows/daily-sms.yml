@@ -81,23 +81,32 @@ jobs:
             menu_lines = []
             for line in menu.splitlines():
               line = " ".join(line.split())
-              if line and line != day_number:
+              if line and line != day_number and line.upper() != "ENTREE CHOICES":
                 menu_lines.append(line)
             menu = "\n".join(dict.fromkeys(menu_lines))
 
+            menu_lines = menu.splitlines()
+            sides_index = next(
+              (index for index, line in enumerate(menu_lines) if line.upper() == "SIDES"),
+              len(menu_lines),
+            )
+            sections = [menu_lines[:sides_index], menu_lines[sides_index:]]
+            sections = [section for section in sections if section]
+
             messages = []
-            current_message = []
-            current_length = 0
-            for line in menu.splitlines():
-              line_length = len(line) + (1 if current_message else 0)
-              if current_message and current_length + line_length > 150:
+            for section in sections:
+              current_message = []
+              current_length = 0
+              for line in section:
+                line_length = len(line) + (1 if current_message else 0)
+                if current_message and current_length + line_length > 120:
+                  messages.append("\n".join(current_message))
+                  current_message = []
+                  current_length = 0
+                current_message.append(line)
+                current_length += len(line) + (1 if len(current_message) > 1 else 0)
+              if current_message:
                 messages.append("\n".join(current_message))
-                current_message = []
-                current_length = 0
-              current_message.append(line)
-              current_length += len(line) + (1 if len(current_message) > 1 else 0)
-            if current_message:
-              messages.append("\n".join(current_message))
 
           smtp_host = os.environ["SMTP_HOST"]
           smtp_port = int(os.environ["SMTP_PORT"])
@@ -111,10 +120,11 @@ jobs:
             server.login(username, password)
             for message_number, message_body in enumerate(messages, start=1):
               msg = EmailMessage()
-              msg["Subject"] = f"Lunch Menu {message_number}/{len(messages)}"
+              header = f"(Lunch Menu {message_number}/{len(messages)})"
+              msg["Subject"] = header
               msg["From"] = from_addr
               msg["To"] = recipient
-              msg.set_content(message_body)
+              msg.set_content(f"{header}\n{message_body}")
               server.send_message(msg)
 
           print(f"Sent {len(messages)} SMS email(s) to {recipient}:\n{menu}")
