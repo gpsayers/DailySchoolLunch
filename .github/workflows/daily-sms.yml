@@ -72,14 +72,14 @@ jobs:
             )
             browser.close()
 
-          if not menu:
-                raise RuntimeError(f"Could not find a lunch menu cell for day {day_number}")
+            if not menu:
+              raise RuntimeError(f"Could not find a lunch menu cell for day {day_number}")
 
             menu_lines = []
             for line in menu.splitlines():
-                line = " ".join(line.split())
-                if line and line != day_number:
-                    menu_lines.append(line)
+              line = " ".join(line.split())
+              if line and line != day_number:
+                menu_lines.append(line)
             menu = "\n".join(dict.fromkeys(menu_lines))
 
           smtp_host = os.environ["SMTP_HOST"]
