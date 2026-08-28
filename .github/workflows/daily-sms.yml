@@ -2,7 +2,8 @@ name: Daily SMS
 
 on:
   schedule:
-    - cron: '0 8 * * 1-5'
+    - cron: '0 13 * * 1-5'
+    - cron: '0 14 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -25,6 +26,11 @@ jobs:
           if [ -z "${SMTP_USERNAME}" ] || [ -z "${SMTP_PASSWORD}" ] || [ -z "${SMTP_FROM}" ] || [ -z "${RECIPIENT_PHONE_NUMBER}" ]; then
             echo "Missing one or more required secrets: SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM, RECIPIENT_PHONE_NUMBER"
             exit 1
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ] && [ "$(TZ=America/Chicago date +%H)" != "08" ]; then
+            echo "Skipping scheduled run outside 8:00 AM Central time."
+            exit 0
           fi
 
       - name: Send SMS via Verizon email gateway
