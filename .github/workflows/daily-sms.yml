@@ -35,7 +35,6 @@ jobs:
 
           python3 - <<'PY'
           import os
-          import re
           import smtplib
           from datetime import date
           from email.message import EmailMessage
@@ -53,25 +52,45 @@ jobs:
               accept_button.click()
 
             page.wait_for_timeout(2000)
-            page_text = page.locator("body").inner_text()
+            day_number = str(date.today().day)
+            menu = page.evaluate(
+                """
+                (dayNumber) => {
+                  const isVisible = (element) => {
+                    const style = window.getComputedStyle(element);
+                    return style.display !== 'none' && style.visibility !== 'hidden';
+                  };
+                  const dayElements = [...document.querySelectorAll('*')].filter(
+                    (element) => isVisible(element) && element.innerText?.trim() === dayNumber
+                  );
+                  const cells = [];
+                  for (const dayElement of dayElements) {
+                    let candidate = dayElement;
+                    for (let level = 0; level < 7 && candidate; level += 1) {
+                      const text = candidate.innerText?.trim() || '';
+                      if (/ENTREE CHOICES/i.test(text) && /SIDES/i.test(text)) {
+                        cells.push(text);
+                        break;
+                      }
+                      candidate = candidate.parentElement;
+                    }
+                  }
+                  return cells.sort((left, right) => left.length - right.length)[0] || '';
+                }
+                """,
+                day_number,
+            )
             browser.close()
 
-          lunch_match = re.search(
-            r"(?is)\bLUNCH\b(.*?)(?=\bDINNER\b|\bBREAKFAST\b|\Z)",
-            page_text,
-          )
-          if not lunch_match:
-            raise RuntimeError("Could not find the lunch section on the MealViewer page")
-
-          menu_lines = []
-          for line in lunch_match.group(1).splitlines():
-            line = " ".join(line.split())
-            if line and not re.match(r"^(\d+\s*)?(Cals|Calories|g Carbs|g Fat|mg Sod)", line, re.I):
-              menu_lines.append(line)
-
-          menu = "\n".join(dict.fromkeys(menu_lines))
           if not menu:
-            raise RuntimeError("The lunch section was found, but no menu items were extracted")
+                raise RuntimeError(f"Could not find a lunch menu cell for day {day_number}")
+
+            menu_lines = []
+            for line in menu.splitlines():
+                line = " ".join(line.split())
+                if line and line != day_number:
+                    menu_lines.append(line)
+            menu = "\n".join(dict.fromkeys(menu_lines))
 
           smtp_host = os.environ["SMTP_HOST"]
           smtp_port = int(os.environ["SMTP_PORT"])
