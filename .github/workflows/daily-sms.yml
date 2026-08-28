@@ -53,9 +53,12 @@ jobs:
 
             lunch_tab = page.get_by_text("Lunch", exact=True)
             if lunch_tab.count():
-              lunch_tab.first.click()
+              lunch_tab.first.evaluate("element => element.click()")
 
-            page.wait_for_timeout(2000)
+            page.locator(".calendar-grid-item").filter(
+                has=page.locator("text=ENTREE CHOICES")
+            ).first.wait_for(timeout=10000)
+            page.wait_for_timeout(1000)
             day_number = str(date.today().day)
             menu = page.evaluate(
                 """
