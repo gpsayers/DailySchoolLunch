@@ -30,10 +30,48 @@ jobs:
       - name: Send SMS via Verizon email gateway
         shell: bash
         run: |
+          python3 -m pip install --quiet playwright
+          python3 -m playwright install --with-deps chromium
+
           python3 - <<'PY'
           import os
+          import re
           import smtplib
+          from datetime import date
           from email.message import EmailMessage
+          from playwright.sync_api import sync_playwright
+
+          menu_url = "https://schools.mealviewer.com/school/LibertyMiddleSc"
+
+          with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            page = browser.new_page()
+            page.goto(menu_url, wait_until="networkidle")
+
+            accept_button = page.get_by_text("I ACCEPT", exact=True)
+            if accept_button.count():
+              accept_button.click()
+
+            page.wait_for_timeout(2000)
+            page_text = page.locator("body").inner_text()
+            browser.close()
+
+          lunch_match = re.search(
+            r"(?is)\bLUNCH\b(.*?)(?=\bDINNER\b|\bBREAKFAST\b|\Z)",
+            page_text,
+          )
+          if not lunch_match:
+            raise RuntimeError("Could not find the lunch section on the MealViewer page")
+
+          menu_lines = []
+          for line in lunch_match.group(1).splitlines():
+            line = " ".join(line.split())
+            if line and not re.match(r"^(\d+\s*)?(Cals|Calories|g Carbs|g Fat|mg Sod)", line, re.I):
+              menu_lines.append(line)
+
+          menu = "\n".join(dict.fromkeys(menu_lines))
+          if not menu:
+            raise RuntimeError("The lunch section was found, but no menu items were extracted")
 
           smtp_host = os.environ["SMTP_HOST"]
           smtp_port = int(os.environ["SMTP_PORT"])
@@ -41,18 +79,17 @@ jobs:
           password = os.environ["SMTP_PASSWORD"]
           from_addr = os.environ["SMTP_FROM"]
           recipient = os.environ["RECIPIENT_PHONE_NUMBER"] + "@vtext.com"
-          body = os.environ.get("MESSAGE_BODY", "Good morning! This is your daily reminder from DailySchoolLunch.")
 
           msg = EmailMessage()
-          msg["Subject"] = "Daily School Lunch"
+          msg["Subject"] = f"Lunch Menu - {date.today().isoformat()}"
           msg["From"] = from_addr
           msg["To"] = recipient
-          msg.set_content(body)
+          msg.set_content(menu)
 
           with smtplib.SMTP(smtp_host, smtp_port) as server:
-              server.starttls()
-              server.login(username, password)
-              server.send_message(msg)
+            server.starttls()
+            server.login(username, password)
+            server.send_message(msg)
 
-          print(f"SMS email sent to {recipient}")
+          print(f"SMS email sent to {recipient} with menu:\n{menu}")
           PY
