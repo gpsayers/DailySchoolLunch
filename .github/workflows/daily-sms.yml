@@ -51,31 +51,21 @@ jobs:
             if accept_button.count():
               accept_button.click()
 
+            lunch_tab = page.get_by_text("Lunch", exact=True)
+            if lunch_tab.count():
+              lunch_tab.first.click()
+
             page.wait_for_timeout(2000)
             day_number = str(date.today().day)
             menu = page.evaluate(
                 """
                 (dayNumber) => {
-                  const isVisible = (element) => {
-                    const style = window.getComputedStyle(element);
-                    return style.display !== 'none' && style.visibility !== 'hidden';
-                  };
-                  const dayElements = [...document.querySelectorAll('*')].filter(
-                    (element) => isVisible(element) && element.innerText?.trim() === dayNumber
-                  );
-                  const cells = [];
-                  for (const dayElement of dayElements) {
-                    let candidate = dayElement;
-                    for (let level = 0; level < 7 && candidate; level += 1) {
-                      const text = candidate.innerText?.trim() || '';
-                      if (/ENTREE CHOICES/i.test(text) && /SIDES/i.test(text)) {
-                        cells.push(text);
-                        break;
-                      }
-                      candidate = candidate.parentElement;
-                    }
-                  }
-                  return cells.sort((left, right) => left.length - right.length)[0] || '';
+                  const today = document.querySelector('.day.today');
+                  const cell = today?.closest('.calendar-grid-item');
+                  const text = cell?.innerText?.trim() || '';
+                  return text.includes(dayNumber) && /ENTREE CHOICES/i.test(text) && /SIDES/i.test(text)
+                    ? text
+                    : '';
                 }
                 """,
                 day_number,
