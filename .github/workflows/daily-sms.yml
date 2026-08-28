@@ -53,7 +53,7 @@ jobs:
 
             lunch_tab = page.get_by_text("Lunch", exact=True)
             if lunch_tab.count():
-              lunch_tab.first.evaluate("element => element.click()")
+              page.locator("#menu-block").select_option(label="Lunch")
 
             page.locator(".calendar-grid-item").filter(
                 has=page.locator("text=ENTREE CHOICES")
