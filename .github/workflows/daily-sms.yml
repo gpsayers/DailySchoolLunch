@@ -35,6 +35,7 @@ jobs:
 
           python3 - <<'PY'
           import os
+          import re
           import smtplib
           from datetime import date
           from email.message import EmailMessage
@@ -113,19 +114,30 @@ jobs:
           username = os.environ["SMTP_USERNAME"]
           password = os.environ["SMTP_PASSWORD"]
           from_addr = os.environ["SMTP_FROM"]
-          recipient = os.environ["RECIPIENT_PHONE_NUMBER"] + "@vtext.com"
+          phone_numbers = [
+            re.sub(r"\D", "", value)
+            for value in os.environ["RECIPIENT_PHONE_NUMBER"].split(",")
+            if value.strip()
+          ]
+          invalid_numbers = [number for number in phone_numbers if len(number) != 10]
+          if not phone_numbers or invalid_numbers:
+            raise ValueError(
+              "RECIPIENT_PHONE_NUMBER must contain comma-separated 10-digit phone numbers"
+            )
+          recipients = [number + "@vtext.com" for number in phone_numbers]
 
           with smtplib.SMTP(smtp_host, smtp_port) as server:
             server.starttls()
             server.login(username, password)
-            for message_number, message_body in enumerate(messages, start=1):
-              msg = EmailMessage()
-              header = f"(Lunch Menu {message_number}/{len(messages)})"
-              msg["Subject"] = header
-              msg["From"] = from_addr
-              msg["To"] = recipient
-              msg.set_content(f"{header}\n{message_body}")
-              server.send_message(msg)
+            for recipient in recipients:
+              for message_number, message_body in enumerate(messages, start=1):
+                msg = EmailMessage()
+                header = f"(Lunch Menu {message_number}/{len(messages)})"
+                msg["Subject"] = header
+                msg["From"] = from_addr
+                msg["To"] = recipient
+                msg.set_content(f"{header}\n{message_body}")
+                server.send_message(msg)
 
-          print(f"Sent {len(messages)} SMS email(s) to {recipient}:\n{menu}")
+          print(f"Sent {len(messages)} SMS part(s) to {len(recipients)} recipient(s):\n{menu}")
           PY
