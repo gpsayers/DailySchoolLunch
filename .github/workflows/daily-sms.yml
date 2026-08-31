@@ -170,6 +170,7 @@ jobs:
 
             import json
             import urllib.request
+            import urllib.error
 
             sent_count = 0
             for phone in phone_numbers:
@@ -188,11 +189,18 @@ jobs:
                   headers={
                     "Content-Type": "application/json",
                     "x-api-key": api_key,
+                    "User-Agent": "DailySchoolLunch/1.0",
                   },
                   method="POST",
                 )
-                with urllib.request.urlopen(request, timeout=30) as response:
-                  response.read()
+                try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                    response.read()
+                except urllib.error.HTTPError as error:
+                  error_body = error.read().decode("utf-8", errors="replace")
+                  raise RuntimeError(
+                    f"TextBee API returned HTTP {error.code}: {error_body}"
+                  ) from error
                 sent_count += 1
 
             print(f"Sent {sent_count} TextBee message(s) to {len(phone_numbers)} recipient(s)")
