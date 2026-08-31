@@ -173,18 +173,21 @@ jobs:
 
             sent_count = 0
             for phone in phone_numbers:
+              normalized_phone = str(phone)
+              if not normalized_phone.startswith("+"):
+                normalized_phone = f"+1{normalized_phone}"
+
               for message_number, message_body in enumerate(messages, start=1):
                 payload = {
-                  "to": phone,
+                  "recipients": [normalized_phone],
                   "message": f"Lunch Menu {message_number}/{len(messages)}\n{message_body}",
-                  "countryCode": "1",
                 }
                 request = urllib.request.Request(
-                  "https://api.textbee.dev/api/v1/send",
+                  "https://api.textbee.dev/api/v1/gateway/send-sms",
                   data=json.dumps(payload).encode("utf-8"),
                   headers={
                     "Content-Type": "application/json",
-                    "X-API-Key": api_key,
+                    "x-api-key": api_key,
                   },
                   method="POST",
                 )
