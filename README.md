@@ -4,6 +4,14 @@ This GitHub Actions workflow retrieves the daily lunch menu for Liberty Middle
 School from MealViewer and sends it by SMS. It supports Gmail's email-to-SMS
 gateway, TextBee (via G's Android phone gateway), and a test mode.
 
+## Meal Website
+
+The menu source is the [Liberty Middle School MealViewer page](https://schools.mealviewer.com/school/LibertyMiddleSc).
+The workflow opens the page with Playwright, accepts the site's notice when
+needed, selects the **Lunch** menu, and extracts the current day's entree and
+side choices. The page must contain a menu for the current calendar day or the
+workflow stops without sending a message.
+
 ## Delivery Modes
 
 Choose the mode with the `delivery_mode` workflow input:
