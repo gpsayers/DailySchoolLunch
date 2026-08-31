@@ -11,29 +11,46 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      DELIVERY_MODE: ${{ vars.DELIVERY_MODE != '' && vars.DELIVERY_MODE || '1' }}
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: '587'
       SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       RECIPIENT_PHONE_NUMBER: ${{ secrets.RECIPIENT_PHONE_NUMBER }}
+      TEXTBEE_API_KEY: ${{ secrets.TEXTBEE_API_KEY }}
+      TEXTBEE_PHONE: ${{ secrets.TEXTBEE_PHONE }}
       MESSAGE_BODY: ${{ vars.DAILY_SMS_MESSAGE != '' && vars.DAILY_SMS_MESSAGE || 'Good morning! This is your daily reminder from DailySchoolLunch.' }}
 
     steps:
-      - name: Validate email-to-SMS configuration
+      - name: Validate delivery configuration
         shell: bash
         run: |
-          if [ -z "${SMTP_USERNAME}" ] || [ -z "${SMTP_PASSWORD}" ] || [ -z "${SMTP_FROM}" ] || [ -z "${RECIPIENT_PHONE_NUMBER}" ]; then
-            echo "Missing one or more required secrets: SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM, RECIPIENT_PHONE_NUMBER"
+          if [ "${DELIVERY_MODE}" = "1" ]; then
+            if [ -z "${SMTP_USERNAME}" ] || [ -z "${SMTP_PASSWORD}" ] || [ -z "${SMTP_FROM}" ] || [ -z "${RECIPIENT_PHONE_NUMBER}" ]; then
+              echo "Missing one or more required secrets for email-to-SMS: SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM, RECIPIENT_PHONE_NUMBER"
+              exit 1
+            fi
+          elif [ "${DELIVERY_MODE}" = "2" ]; then
+            if [ -z "${TEXTBEE_API_KEY}" ] || [ -z "${TEXTBEE_PHONE}" ]; then
+              echo "Missing one or more required secrets for TextBee: TEXTBEE_API_KEY, TEXTBEE_PHONE"
+              exit 1
+            fi
+          else
+            echo "DELIVERY_MODE must be 1 (email-to-SMS) or 2 (TextBee)"
             exit 1
           fi
 
+          # Only apply the 8:00-9:00 AM Central-time gate for scheduled runs.
+          # Use GitHub Actions "Run workflow" / workflow_dispatch for manual testing.
           if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
             local_hour="$(TZ=America/Chicago date +%H)"
             if [ "$local_hour" != "08" ] && [ "$local_hour" != "09" ]; then
               echo "Skipping scheduled run outside 8:00-9:00 AM Central time."
               exit 0
             fi
+          else
+            echo "Manual workflow_dispatch run: hour filter skipped for testing."
           fi
 
       - name: Send SMS via Verizon email gateway
@@ -118,35 +135,68 @@ jobs:
               if current_message:
                 messages.append("\n".join(current_message))
 
-          smtp_host = os.environ["SMTP_HOST"]
-          smtp_port = int(os.environ["SMTP_PORT"])
-          username = os.environ["SMTP_USERNAME"]
-          password = os.environ["SMTP_PASSWORD"]
-          from_addr = os.environ["SMTP_FROM"]
-          phone_numbers = [
-            re.sub(r"\D", "", value)
-            for value in os.environ["RECIPIENT_PHONE_NUMBER"].split(",")
-            if value.strip()
-          ]
-          invalid_numbers = [number for number in phone_numbers if len(number) != 10]
-          if not phone_numbers or invalid_numbers:
-            raise ValueError(
-              "RECIPIENT_PHONE_NUMBER must contain comma-separated 10-digit phone numbers"
-            )
-          recipients = [number + "@vtext.com" for number in phone_numbers]
+          delivery_mode = os.environ.get("DELIVERY_MODE", "1").strip()
 
-          with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(username, password)
-            for recipient in recipients:
-              for message_number, message_body in enumerate(messages, start=1):
-                msg = EmailMessage()
-                header = f"Lunch Menu {message_number}/{len(messages)}"
-                msg["Subject"] = header
-                msg["From"] = from_addr
-                msg["To"] = recipient
-                msg.set_content(message_body)
-                server.send_message(msg)
+          if delivery_mode == "1":
+            smtp_host = os.environ["SMTP_HOST"]
+            smtp_port = int(os.environ["SMTP_PORT"])
+            username = os.environ["SMTP_USERNAME"]
+            password = os.environ["SMTP_PASSWORD"]
+            from_addr = os.environ["SMTP_FROM"]
+            phone_numbers = [
+              re.sub(r"\D", "", value)
+              for value in os.environ["RECIPIENT_PHONE_NUMBER"].split(",")
+              if value.strip()
+            ]
+            invalid_numbers = [number for number in phone_numbers if len(number) != 10]
+            if not phone_numbers or invalid_numbers:
+              raise ValueError(
+                "RECIPIENT_PHONE_NUMBER must contain comma-separated 10-digit phone numbers"
+              )
+            recipients = [number + "@vtext.com" for number in phone_numbers]
 
-          print(f"Sent {len(messages)} SMS part(s) to {len(recipients)} recipient(s):\n{menu}")
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+              server.starttls()
+              server.login(username, password)
+              for recipient in recipients:
+                for message_number, message_body in enumerate(messages, start=1):
+                  msg = EmailMessage()
+                  header = f"Lunch Menu {message_number}/{len(messages)}"
+                  msg["Subject"] = header
+                  msg["From"] = from_addr
+                  msg["To"] = recipient
+                  msg.set_content(message_body)
+                  server.send_message(msg)
+
+            print(f"Sent {len(messages)} SMS part(s) to {len(recipients)} recipient(s) via email-to-SMS:\n{menu}")
+          elif delivery_mode == "2":
+            api_key = os.environ.get("TEXTBEE_API_KEY", "").strip()
+            phone = os.environ.get("TEXTBEE_PHONE", "").strip()
+            if not api_key or not phone:
+              raise ValueError("TEXTBEE_API_KEY and TEXTBEE_PHONE are required when DELIVERY_MODE=2")
+
+            import json
+            import urllib.request
+
+            for message_number, message_body in enumerate(messages, start=1):
+              payload = {
+                "to": phone,
+                "message": f"Lunch Menu {message_number}/{len(messages)}\n{message_body}",
+                "countryCode": "1",
+              }
+              request = urllib.request.Request(
+                "https://api.textbee.dev/api/v1/send",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                  "Content-Type": "application/json",
+                  "X-API-Key": api_key,
+                },
+                method="POST",
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                response.read()
+
+            print(f"Sent {len(messages)} TextBee message(s) to {phone}")
+          else:
+            raise ValueError("DELIVERY_MODE must be 1 (email-to-SMS) or 2 (TextBee)")
           PY
