@@ -1,16 +1,19 @@
 name: Daily SMS
 
 on:
-  schedule:
-    - cron: '28 16 * * 1-5'
   workflow_dispatch:
+    inputs:
+      delivery_mode:
+        description: '1=email-to-SMS, 2=TextBee, 3=no-op test'
+        required: false
+        default: '3'
 
 jobs:
   send_sms:
     runs-on: ubuntu-latest
 
     env:
-      DELIVERY_MODE: ${{ vars.DELIVERY_MODE != '' && vars.DELIVERY_MODE || '1' }}
+      DELIVERY_MODE: ${{ github.event.inputs.delivery_mode }}
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: '587'
       SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
@@ -18,7 +21,6 @@ jobs:
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       RECIPIENT_PHONE_NUMBER: ${{ secrets.RECIPIENT_PHONE_NUMBER }}
       TEXTBEE_API_KEY: ${{ secrets.TEXTBEE_API_KEY }}
-      MESSAGE_BODY: ${{ vars.DAILY_SMS_MESSAGE != '' && vars.DAILY_SMS_MESSAGE || 'Good morning! This is your daily reminder from DailySchoolLunch.' }}
 
     steps:
       - name: Validate delivery configuration
@@ -42,19 +44,7 @@ jobs:
             exit 1
           fi
 
-          # Only apply the 8:00-9:00 AM Central-time gate for scheduled runs.
-          # Use GitHub Actions "Run workflow" / workflow_dispatch for manual testing.
-          if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
-            local_hour="$(TZ=America/Chicago date +%H)"
-            if [ "$local_hour" != "08" ] && [ "$local_hour" != "09" ]; then
-              echo "Skipping scheduled run outside 8:00-9:00 AM Central time."
-              exit 0
-            fi
-          else
-            echo "Manual workflow_dispatch run: hour filter skipped for testing."
-          fi
-
-      - name: Send SMS via Verizon email gateway
+      - name: Send lunch SMS
         shell: bash
         run: |
           python3 -m pip install --quiet playwright
@@ -204,7 +194,7 @@ jobs:
 
             print(f"Sent {sent_count} TextBee message(s) to {len(phone_numbers)} recipient(s)")
           elif delivery_mode == "3":
-            print(f"DELIVERY_MODE=3 selected: test mode only. Scheduled run validated, but no message was sent.\nPreview: {menu}")
+            print(f"DELIVERY_MODE=3 selected: test mode only. No message was sent.\nPreview: {menu}")
           else:
             raise ValueError("DELIVERY_MODE must be 1 (email-to-SMS), 2 (TextBee), or 3 (no-op test mode)")
           PY
