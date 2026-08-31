@@ -11,33 +11,20 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DELIVERY_MODE: ${{ vars.DELIVERY_MODE != '' && vars.DELIVERY_MODE || '1' }}
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: '587'
       SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       RECIPIENT_PHONE_NUMBER: ${{ secrets.RECIPIENT_PHONE_NUMBER }}
-      PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
-      PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
       MESSAGE_BODY: ${{ vars.DAILY_SMS_MESSAGE != '' && vars.DAILY_SMS_MESSAGE || 'Good morning! This is your daily reminder from DailySchoolLunch.' }}
 
     steps:
-      - name: Validate delivery configuration
+      - name: Validate email-to-SMS configuration
         shell: bash
         run: |
-          if [ "${DELIVERY_MODE}" = "1" ]; then
-            if [ -z "${SMTP_USERNAME}" ] || [ -z "${SMTP_PASSWORD}" ] || [ -z "${SMTP_FROM}" ] || [ -z "${RECIPIENT_PHONE_NUMBER}" ]; then
-              echo "Missing one or more required secrets for email-to-SMS: SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM, RECIPIENT_PHONE_NUMBER"
-              exit 1
-            fi
-          elif [ "${DELIVERY_MODE}" = "2" ]; then
-            if [ -z "${PUSHOVER_TOKEN}" ] || [ -z "${PUSHOVER_USER}" ]; then
-              echo "Missing one or more required secrets for Pushover: PUSHOVER_TOKEN, PUSHOVER_USER"
-              exit 1
-            fi
-          else
-            echo "DELIVERY_MODE must be 1 (email-to-SMS) or 2 (Pushover)"
+          if [ -z "${SMTP_USERNAME}" ] || [ -z "${SMTP_PASSWORD}" ] || [ -z "${SMTP_FROM}" ] || [ -z "${RECIPIENT_PHONE_NUMBER}" ]; then
+            echo "Missing one or more required secrets: SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM, RECIPIENT_PHONE_NUMBER"
             exit 1
           fi
 
@@ -131,67 +118,35 @@ jobs:
               if current_message:
                 messages.append("\n".join(current_message))
 
-          delivery_mode = os.environ.get("DELIVERY_MODE", "1").strip()
+          smtp_host = os.environ["SMTP_HOST"]
+          smtp_port = int(os.environ["SMTP_PORT"])
+          username = os.environ["SMTP_USERNAME"]
+          password = os.environ["SMTP_PASSWORD"]
+          from_addr = os.environ["SMTP_FROM"]
+          phone_numbers = [
+            re.sub(r"\D", "", value)
+            for value in os.environ["RECIPIENT_PHONE_NUMBER"].split(",")
+            if value.strip()
+          ]
+          invalid_numbers = [number for number in phone_numbers if len(number) != 10]
+          if not phone_numbers or invalid_numbers:
+            raise ValueError(
+              "RECIPIENT_PHONE_NUMBER must contain comma-separated 10-digit phone numbers"
+            )
+          recipients = [number + "@vtext.com" for number in phone_numbers]
 
-          if delivery_mode == "1":
-            smtp_host = os.environ["SMTP_HOST"]
-            smtp_port = int(os.environ["SMTP_PORT"])
-            username = os.environ["SMTP_USERNAME"]
-            password = os.environ["SMTP_PASSWORD"]
-            from_addr = os.environ["SMTP_FROM"]
-            phone_numbers = [
-              re.sub(r"\D", "", value)
-              for value in os.environ["RECIPIENT_PHONE_NUMBER"].split(",")
-              if value.strip()
-            ]
-            invalid_numbers = [number for number in phone_numbers if len(number) != 10]
-            if not phone_numbers or invalid_numbers:
-              raise ValueError(
-                "RECIPIENT_PHONE_NUMBER must contain comma-separated 10-digit phone numbers"
-              )
-            recipients = [number + "@vtext.com" for number in phone_numbers]
+          with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(username, password)
+            for recipient in recipients:
+              for message_number, message_body in enumerate(messages, start=1):
+                msg = EmailMessage()
+                header = f"Lunch Menu {message_number}/{len(messages)}"
+                msg["Subject"] = header
+                msg["From"] = from_addr
+                msg["To"] = recipient
+                msg.set_content(message_body)
+                server.send_message(msg)
 
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-              server.starttls()
-              server.login(username, password)
-              for recipient in recipients:
-                for message_number, message_body in enumerate(messages, start=1):
-                  msg = EmailMessage()
-                  header = f"Lunch Menu {message_number}/{len(messages)}"
-                  msg["Subject"] = header
-                  msg["From"] = from_addr
-                  msg["To"] = recipient
-                  msg.set_content(message_body)
-                  server.send_message(msg)
-
-            print(f"Sent {len(messages)} SMS part(s) to {len(recipients)} recipient(s) via email-to-SMS:\n{menu}")
-          elif delivery_mode == "2":
-            token = os.environ.get("PUSHOVER_TOKEN", "").strip()
-            user = os.environ.get("PUSHOVER_USER", "").strip()
-            if not token or not user:
-              raise ValueError("PUSHOVER_TOKEN and PUSHOVER_USER are required when DELIVERY_MODE=2")
-
-            import json
-            import urllib.parse
-            import urllib.request
-
-            for message_number, message_body in enumerate(messages, start=1):
-              payload = {
-                "token": token,
-                "user": user,
-                "title": f"Lunch Menu {message_number}/{len(messages)}",
-                "message": message_body,
-              }
-              data = urllib.parse.urlencode(payload).encode("utf-8")
-              request = urllib.request.Request(
-                "https://api.pushover.net/1/messages.json",
-                data=data,
-                method="POST",
-              )
-              with urllib.request.urlopen(request, timeout=30) as response:
-                response.read()
-
-            print(f"Sent {len(messages)} Pushover message(s) for {date.today().isoformat()}")
-          else:
-            raise ValueError("DELIVERY_MODE must be 1 (email-to-SMS) or 2 (Pushover)")
+          print(f"Sent {len(messages)} SMS part(s) to {len(recipients)} recipient(s):\n{menu}")
           PY
