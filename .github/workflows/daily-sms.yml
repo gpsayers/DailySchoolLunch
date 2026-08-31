@@ -28,9 +28,12 @@ jobs:
             exit 1
           fi
 
-          if [ "${GITHUB_EVENT_NAME}" = "schedule" ] && [ "$(TZ=America/Chicago date +%H)" != "08" ]; then
-            echo "Skipping scheduled run outside 8:00 AM Central time."
-            exit 0
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
+            local_hour="$(TZ=America/Chicago date +%H)"
+            if [ "$local_hour" != "08" ] && [ "$local_hour" != "09" ]; then
+              echo "Skipping scheduled run outside 8:00-9:00 AM Central time."
+              exit 0
+            fi
           fi
 
       - name: Send SMS via Verizon email gateway
