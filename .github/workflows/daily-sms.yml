@@ -2,7 +2,7 @@ name: Daily SMS
 
 on:
   schedule:
-    - cron: '56 20 * * 1-5'
+    - cron: '28 16 * * 1-5'
   workflow_dispatch:
 
 jobs:
