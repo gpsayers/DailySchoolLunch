@@ -43,6 +43,10 @@ jobs:
               echo "Missing required secret for ntfy: NTFY_TOPIC_URL"
               exit 1
             fi
+            if [[ ! "${NTFY_TOPIC_URL}" =~ ^https?://[^/]+/.+ ]]; then
+              echo "NTFY_TOPIC_URL must be a complete URL, such as https://ntfy.sh/your-topic-name"
+              exit 1
+            fi
           elif [ "${DELIVERY_MODE}" = "3" ]; then
             echo "DELIVERY_MODE=3 selected: no-op test mode. No real message will be sent."
             exit 0
@@ -217,6 +221,10 @@ jobs:
             import urllib.request
 
             topic_url = os.environ["NTFY_TOPIC_URL"].strip().rstrip("/")
+            if not topic_url.startswith(("http://", "https://")):
+              raise ValueError(
+                "NTFY_TOPIC_URL must start with http:// or https:// and include a topic path"
+              )
             token = os.environ.get("NTFY_TOKEN", "").strip()
             headers = {
               "Content-Type": "text/plain; charset=utf-8",
