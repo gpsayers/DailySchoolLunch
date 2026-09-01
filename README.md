@@ -1,7 +1,7 @@
 # Daily School Lunch
 
 This GitHub Actions workflow retrieves the daily lunch menu for Liberty Middle
-School from MealViewer and sends it by SMS. It supports Gmail's email-to-SMS
+School from MealViewer and sends it by SMS or Push Notification. It supports Gmail's email-to-SMS
 gateway, TextBee (via G's Android phone gateway), ntfy, and a test mode.
 
 ## Meal Website
@@ -23,7 +23,7 @@ Choose the mode with the `delivery_mode` workflow input:
 | `3` | No-op test | None | Scrapes and prints a menu preview without sending a message. This is the default. |
 | `4` | ntfy | `NTFY_TOPIC_URL` | Publishes the menu to an ntfy topic. `NTFY_TOKEN` is optional for protected topics. |
 
-The workflow accepts comma-separated 10-digit phone numbers, for example:
+The workflow accepts comma-separated 10-digit phone numbers for SMS delivery, for example:
 
 ```text
 7015551234, 7015555678
