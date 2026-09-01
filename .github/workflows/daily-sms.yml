@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       delivery_mode:
-        description: '1=email-to-SMS, 2=TextBee, 3=no-op test'
+        description: '1=email-to-SMS, 2=TextBee, 3=no-op test, 4=ntfy'
         required: false
         default: '3'
 
@@ -21,6 +21,8 @@ jobs:
       SMTP_FROM: ${{ secrets.SMTP_FROM }}
       RECIPIENT_PHONE_NUMBER: ${{ secrets.RECIPIENT_PHONE_NUMBER }}
       TEXTBEE_API_KEY: ${{ secrets.TEXTBEE_API_KEY }}
+      NTFY_TOPIC_URL: ${{ secrets.NTFY_TOPIC_URL }}
+      NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
 
     steps:
       - name: Validate delivery configuration
@@ -36,11 +38,16 @@ jobs:
               echo "Missing one or more required secrets for TextBee: TEXTBEE_API_KEY, RECIPIENT_PHONE_NUMBER"
               exit 1
             fi
+          elif [ "${DELIVERY_MODE}" = "4" ]; then
+            if [ -z "${NTFY_TOPIC_URL}" ]; then
+              echo "Missing required secret for ntfy: NTFY_TOPIC_URL"
+              exit 1
+            fi
           elif [ "${DELIVERY_MODE}" = "3" ]; then
             echo "DELIVERY_MODE=3 selected: no-op test mode. No real message will be sent."
             exit 0
           else
-            echo "DELIVERY_MODE must be 1 (email-to-SMS), 2 (TextBee), or 3 (no-op test mode)"
+            echo "DELIVERY_MODE must be 1 (email-to-SMS), 2 (TextBee), 3 (no-op test mode), or 4 (ntfy)"
             exit 1
           fi
 
@@ -129,17 +136,18 @@ jobs:
           delivery_mode = os.environ.get("DELIVERY_MODE", "1").strip()
           raw_numbers = [value.strip() for value in os.environ.get("RECIPIENT_PHONE_NUMBER", "").split(",") if value.strip()]
 
-          if not raw_numbers:
-            raise ValueError("RECIPIENT_PHONE_NUMBER must contain at least one phone number")
-
           phone_numbers = []
-          for value in raw_numbers:
-            digits = re.sub(r"\D", "", value)
-            if len(digits) != 10:
-              raise ValueError(
-                "RECIPIENT_PHONE_NUMBER must contain comma-separated 10-digit phone numbers"
-              )
-            phone_numbers.append(digits)
+          if delivery_mode in ("1", "2"):
+            if not raw_numbers:
+              raise ValueError("RECIPIENT_PHONE_NUMBER must contain at least one phone number")
+
+            for value in raw_numbers:
+              digits = re.sub(r"\D", "", value)
+              if len(digits) != 10:
+                raise ValueError(
+                  "RECIPIENT_PHONE_NUMBER must contain comma-separated 10-digit phone numbers"
+                )
+              phone_numbers.append(digits)
 
           if delivery_mode == "1":
             smtp_host = os.environ["SMTP_HOST"]
@@ -204,8 +212,45 @@ jobs:
                 sent_count += 1
 
             print(f"Sent {sent_count} TextBee message(s) to {len(phone_numbers)} recipient(s)")
+          elif delivery_mode == "4":
+            import urllib.error
+            import urllib.request
+
+            topic_url = os.environ["NTFY_TOPIC_URL"].strip().rstrip("/")
+            token = os.environ.get("NTFY_TOKEN", "").strip()
+            headers = {
+              "Content-Type": "text/plain; charset=utf-8",
+              "Title": "Daily Lunch Menu",
+              "User-Agent": "DailySchoolLunch/1.0",
+            }
+            if token:
+              headers["Authorization"] = f"Bearer {token}"
+
+            message_body = menu
+            message_size = len(message_body.encode("utf-8"))
+            if message_size > 4096:
+              print(
+                f"Warning: ntfy message is {message_size} bytes; messages over 4096 bytes are sent as attachments"
+              )
+
+            request = urllib.request.Request(
+              topic_url,
+              data=message_body.encode("utf-8"),
+              headers={**headers, "Title": "Daily Lunch Menu"},
+              method="POST",
+            )
+            try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                response.read()
+            except urllib.error.HTTPError as error:
+              error_body = error.read().decode("utf-8", errors="replace")
+              raise RuntimeError(
+                f"ntfy returned HTTP {error.code}: {error_body}"
+              ) from error
+
+            print("Published the full lunch menu as one ntfy notification")
           elif delivery_mode == "3":
             print(f"DELIVERY_MODE=3 selected: test mode only. No message was sent.\nPreview: {menu}")
           else:
-            raise ValueError("DELIVERY_MODE must be 1 (email-to-SMS), 2 (TextBee), or 3 (no-op test mode)")
+            raise ValueError("DELIVERY_MODE must be 1 (email-to-SMS), 2 (TextBee), 3 (no-op test mode), or 4 (ntfy)")
           PY
